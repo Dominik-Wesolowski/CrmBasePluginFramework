@@ -86,8 +86,9 @@ Just copy the source files into your project:
 ├── Core/
 │   ├── BasePlugin.cs
 │   ├── ExecutionObject.cs
-│   ├── EntityExtensions.cs
-│   └── ServiceExtensions.cs
+│   ├── Extensions/
+│   │   ├── EntityExtensions.cs
+│   │   └── ServiceExtensions.cs
 ```
 Compatible with your existing plugin setup - no NuGet, no DI container, no magic.
 
