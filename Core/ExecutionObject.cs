@@ -207,13 +207,68 @@ namespace Crm.Shared.Core
         public T FullTargetEntity => base.FullTarget?.ToEntity<T>();
         public new T PreImage => base.PreImage?.ToEntity<T>();
         public new T PostImage => base.PostImage?.ToEntity<T>();
-    }
 
+        public void Require(bool condition, string message)
+        {
+            if (!condition)
+                throw new InvalidPluginExecutionException(message);
+        }
+
+        public bool IsChanged(string attributeName)
+        {
+            if (TargetEntity == null || PreImage == null)
+                return false;
+
+            return TargetEntity.Attributes.Contains(attributeName)
+                   && PreImage.Attributes.Contains(attributeName)
+                   && !Equals(TargetEntity[attributeName], PreImage[attributeName]);
+        }
+
+        public bool HasChangedAny(params string[] attributeNames)
+        {
+            return attributeNames.Any(attr => IsChanged(attr));
+        }
+
+        public void LogContextSummary()
+        {
+            if (!IsTracingEnabled) return;
+
+            Trace("[Context Summary]");
+            Trace($"Message        : {Context.MessageName}");
+            Trace($"Stage          : {Context.Stage} ({(PluginStage)Context.Stage})");
+            Trace($"Depth          : {Context.Depth}");
+            Trace($"Mode           : {(Context.Mode == 0 ? "Synchronous" : "Asynchronous")}");
+            Trace($"Entity         : {Context.PrimaryEntityName} ({Context.PrimaryEntityId})");
+            Trace($"User           : {Context.UserId} / Initiating: {Context.InitiatingUserId}");
+            Trace($"CorrelationId  : {Context.CorrelationId}");
+            Trace($"IsOffline      : {Context.IsExecutingOffline}");
+        }
+
+        public bool TryGetInputParameter<TParam>(string key, out TParam value)
+        {
+            if (Context.InputParameters.TryGetValue(key, out var raw) && raw is TParam typed)
+            {
+                value = typed;
+                return true;
+            }
+            value = default;
+            return false;
+        }
+    }
+    
     public interface IExecutionServiceBag
     {
         IOrganizationServiceFactory OrgServiceFactory { get; }
         IOrganizationService OrgService { get; }
         IOrganizationService OrgServiceAdmin { get; }
         ITracingService TracingService { get; }
+    }
+    
+    public enum PluginStage
+    {
+        PreValidation = 10,
+        PreOperation = 20,
+        MainOperation = 30,
+        PostOperation = 40
     }
 }
