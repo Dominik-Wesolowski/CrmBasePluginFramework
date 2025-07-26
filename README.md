@@ -31,7 +31,7 @@ var service = serviceFactory.CreateOrganizationService(context.UserId);
 
   - BasePlugin - Abstract class with built-in tracing, config parsing, and error handling
   - ExecutionObject - One-liner access to Context, Target, Images, Services, SharedVariables, etc.
-  - ExecutionObject<T> - Strongly-typed version with FullTargetEntity, PreImage, PostImage
+  - ExecutionObject&lt;T&gt; - Strongly-typed version with FullTargetEntity, PreImage, PostImage
 
 
 ## Entity & service extensions
