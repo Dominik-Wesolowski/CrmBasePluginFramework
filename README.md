@@ -77,20 +77,38 @@ This framework was born from years of CRM development pain - repeated plugin sca
 It’s designed for clean, scalable, and reliable plugin development.
 Use it in your next project and never write boilerplate again.
 
-## Installation
+## Installation / Suggested Project Structure
 
-Just copy the source files into your project:
+You can include this framework in your plugin solution using a shared code project, e.g.:
 ```
-/Your.Plugin.Project/
+/Your.Solution/
 │
-├── Core/
-│   ├── BasePlugin.cs
-│   ├── ExecutionObject.cs
-│   ├── Extensions/
-│   │   ├── EntityExtensions.cs
-│   │   └── ServiceExtensions.cs
+├── Plugin.Contact/
+│ └── (uses BasePlugin, ExecutionObject, etc.)
+│
+├── Plugin.Account/
+│ └── (uses shared services, entity helpers, etc.)
+│
+├── Shared.PluginFramework/
+│ └── Core/
+│ ├── BasePlugin.cs
+│ ├── ExecutionObject.cs
+│ ├── Extensions/
+│ │ ├── EntityExtensions.cs
+│ │ └── ServiceExtensions.cs
 ```
-Compatible with your existing plugin setup - no NuGet, no DI container, no magic.
+
+This allows reuse across all your plugins and background jobs.  
+You can name the shared project:
+
+- `Shared.PluginFramework`  
+- `Crm.Core`
+- `Dataverse.Base`
+- `Xrm.Shared`
+
+...whatever fits your naming convention.
+
+Make sure to reference this shared project from each plugin-specific project.
 
 ## 📄 License
 
