@@ -1,10 +1,9 @@
-using System;
-using System.Globalization;
+﻿using System;
 using System.Linq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 
-namespace Crm.Shared.Core.Extensions
+namespace CrmBasePluginFramework
 {
     public static class EntityExtensions
     {

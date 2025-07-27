@@ -1,0 +1,50 @@
+## Build output
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## NuGet
+packages/
+*.nupkg
+project.lock.json
+project.assets.json
+*.nuspec
+*.snupkg
+
+## Web projects
+*.Publish.xml
+App_Data/
+*.dbmdl
+
+## Temporary files
+*.tmp
+*.bak
+*.log
+*.vspscc
+*.vssscc
+*.cache
+*.pdb
+*.mdb
+*.resharper
+_ReSharper*/
+*.DotSettings.user
+
+## Signing / secrets
+*.pfx
+*.snk
+secrets.json
+
+## Others
+TestResults/
+*.orig
+*.sdf
+*.sln.ide

@@ -1,11 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 
-namespace Crm.Shared.Core.Extensions
+namespace CrmBasePluginFramework
 {
     public static class ServiceExtensions
     {

@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Linq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json;
 
-namespace Crm.Shared.Core
+namespace CrmBasePluginFramework
 {
     public class ExecutionObject : IExecutionServiceBag
     {
@@ -251,11 +251,13 @@ namespace Crm.Shared.Core
                 value = typed;
                 return true;
             }
+
             value = default;
             return false;
         }
     }
-    
+
+
     public interface IExecutionServiceBag
     {
         IOrganizationServiceFactory OrgServiceFactory { get; }
@@ -263,7 +265,6 @@ namespace Crm.Shared.Core
         IOrganizationService OrgServiceAdmin { get; }
         ITracingService TracingService { get; }
     }
-    
     public enum PluginStage
     {
         PreValidation = 10,

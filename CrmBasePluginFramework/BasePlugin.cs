@@ -1,10 +1,7 @@
-using System;
-using System.Linq;
+﻿using System;
 using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Query;
-using Newtonsoft.Json;
 
-namespace Crm.Shared.Core
+namespace CrmBasePluginFramework
 {
     public abstract class BasePlugin : IPlugin
     {
