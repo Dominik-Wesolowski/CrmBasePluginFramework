@@ -257,10 +257,15 @@ If you used the previous version of this framework:
 ## 🧠 TL;DR
 
 ✅ Structured, level-based logging
+
 ✅ Auto-configured tracing
+
 ✅ Simple JSON configuration
+
 ✅ Config source cascade (Shared → Step → EV)
+
 ✅ No BaseService dependency
+
 ✅ Early-bound friendly helpers
 
 ---
