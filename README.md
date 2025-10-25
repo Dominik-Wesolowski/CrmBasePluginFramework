@@ -1,7 +1,7 @@
 # CrmBasePluginFramework
 
 A lightweight, opinionated framework for building **Dynamics 365 / Dataverse plugins**.
-Focused on **clarity, maintainability, and full control** over tracing, configuration, and plugin execution context — without unnecessary abstractions or "magic".
+Focused on **clarity, maintainability, and full control** over tracing, configuration, and plugin execution context - without unnecessary abstractions or "magic".
 
 ---
 
@@ -75,7 +75,7 @@ The minimal base classes for plugins:
 
 * Instantiates `ExecutionObject` (passing `unsecure/secure` config).
 * Handles execution lifecycle (`START` / `EXCEPTION` / `END`) via `ExecutionObject.Trace*()` methods.
-* Contains no logging or environment fetch logic — everything is handled by `ExecutionObject`.
+* Contains no logging or environment fetch logic - everything is handled by `ExecutionObject`.
 
 ---
 
@@ -205,7 +205,7 @@ If you used the previous version of this framework:
 | ---------------------------------- | ------------------------------------------- |
 | FetchXml for `debug_plugin_trace`  | `ExecutionObject.GetSetting()`              |
 | Custom tracer setup                | automatic via `ExecutionObject` constructor |
-| BasePlugin logging setup           | removed — handled by ExecutionObject        |
+| BasePlugin logging setup           | removed - handled by ExecutionObject        |
 | Manual `ITracingService` injection | automatic                                   |
 | Step config parsing                | `ExecutionObject.WithStepConfig()`          |
 
@@ -257,15 +257,10 @@ If you used the previous version of this framework:
 ## 🧠 TL;DR
 
 ✅ Structured, level-based logging
-
 ✅ Auto-configured tracing
-
 ✅ Simple JSON configuration
-
 ✅ Config source cascade (Shared → Step → EV)
-
 ✅ No BaseService dependency
-
 ✅ Early-bound friendly helpers
 
 ---
