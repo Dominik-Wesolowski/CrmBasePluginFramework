@@ -1,46 +1,119 @@
-﻿using System;
-using System.Linq;
+﻿using CrmBasePluginFramework.Extensions;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json;
+using System;
+using System.Linq;
 
 namespace CrmBasePluginFramework
 {
     public class ExecutionObject : IExecutionServiceBag
     {
         private const string TraceFlagSchemaName = "debug_plugin_trace";
+        private bool _isPreLoaded, _isPostLoaded, _isTargetLoaded, _isEntityLoaded;
 
-        private Entity preImage, postImage, targetEntity;
-        private object target;
-        private bool isPreLoaded, isPostLoaded, isTargetLoaded, isEntityLoaded;
+        private Entity _preImage, _postImage, _targetEntity;
+        private object _target;
+
+        public ExecutionObject(IServiceProvider provider)
+        {
+            ServiceProvider = provider;
+            Context = (IPluginExecutionContext)provider.GetService(typeof(IPluginExecutionContext));
+            OrgServiceFactory = (IOrganizationServiceFactory)provider.GetService(typeof(IOrganizationServiceFactory));
+            OrgService = OrgServiceFactory.CreateOrganizationService(Context.InitiatingUserId);
+            OrgServiceAdmin = OrgServiceFactory.CreateOrganizationService(null);
+            TracingService = (ITracingService)provider.GetService(typeof(ITracingService));
+            UnsecureConfig =
+                (provider.GetService(typeof(IPluginExecutionContext)) as IPluginExecutionContext)?.SharedVariables[
+                    "UnsecureConfig"] as string;
+            IsTracingEnabled = ResolveTracingFlag();
+        }
 
         public IServiceProvider ServiceProvider { get; }
         public IPluginExecutionContext Context { get; }
+        public string UnsecureConfig { get; }
+
+        public bool IsTracingEnabled { get; }
+
+        public bool IsCreate
+        {
+            get => Context.MessageName.Equals("Create", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public bool IsUpdate
+        {
+            get => Context.MessageName.Equals("Update", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public bool IsDelete
+        {
+            get => Context.MessageName.Equals("Delete", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public object Target
+        {
+            get
+            {
+                if (!_isTargetLoaded)
+                {
+                    Context.InputParameters.TryGetValue("Target", out _target);
+                    _isTargetLoaded = true;
+                }
+
+                return _target;
+            }
+        }
+
+        public Entity TargetEntity
+        {
+            get
+            {
+                if (_isEntityLoaded) return _targetEntity;
+                _targetEntity = Target as Entity;
+                _isEntityLoaded = true;
+
+                return _targetEntity;
+            }
+        }
+
+        public Entity PreImage
+        {
+            get => LoadImage("PreImage", ref _preImage, ref _isPreLoaded, Context.PreEntityImages);
+        }
+
+        public Entity PostImage
+        {
+            get => LoadImage("PostImage", ref _postImage, ref _isPostLoaded, Context.PostEntityImages);
+        }
+
+        public Entity FullTarget
+        {
+            get
+            {
+                var merged = new Entity(TargetEntity?.LogicalName ?? PreImage?.LogicalName ?? PostImage?.LogicalName);
+                if (PreImage != null) merged.Merge(PreImage);
+                if (TargetEntity != null) merged.Merge(TargetEntity);
+                if (PostImage != null) merged.Merge(PostImage);
+                return merged;
+            }
+        }
+
         public ITracingService TracingService { get; }
         public IOrganizationServiceFactory OrgServiceFactory { get; }
         public IOrganizationService OrgService { get; }
         public IOrganizationService OrgServiceAdmin { get; }
-        public string UnsecureConfig { get; }
-
-        public bool IsTracingEnabled { get; private set; }
-
-        public ExecutionObject(IServiceProvider provider)
-        {
-            this.ServiceProvider = provider;
-            this.Context = (IPluginExecutionContext)provider.GetService(typeof(IPluginExecutionContext));
-            this.OrgServiceFactory = (IOrganizationServiceFactory)provider.GetService(typeof(IOrganizationServiceFactory));
-            this.OrgService = OrgServiceFactory.CreateOrganizationService(Context.InitiatingUserId);
-            this.OrgServiceAdmin = OrgServiceFactory.CreateOrganizationService(null);
-            this.TracingService = (ITracingService)provider.GetService(typeof(ITracingService));
-            this.UnsecureConfig = (provider.GetService(typeof(IPluginExecutionContext)) as IPluginExecutionContext)?.SharedVariables["UnsecureConfig"] as string;
-            this.IsTracingEnabled = ResolveTracingFlag();
-        }
 
         public TConfig GetConfig<TConfig>() where TConfig : class
         {
             if (string.IsNullOrEmpty(UnsecureConfig)) return null;
-            try { return JsonConvert.DeserializeObject<TConfig>(UnsecureConfig); }
-            catch { return null; }
+            try
+            {
+                return JsonConvert.DeserializeObject<TConfig>(UnsecureConfig);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public void Trace(string message)
@@ -68,71 +141,23 @@ namespace CrmBasePluginFramework
             Context.SharedVariables[key] = value;
         }
 
-        public bool TryGetSharedVariable<T>(string key, out T value)
-        {
-            if (Context.SharedVariables.TryGetValue(key, out var raw) && raw is T typed)
-            {
-                value = typed;
-                return true;
-            }
-            value = default;
-            return false;
-        }
+        public bool TryGetSharedVariable<T>(string key, out T value) => Context.TryGetSharedVariable(key, out value);
 
-        public bool IsCreate => Context.MessageName.Equals("Create", StringComparison.OrdinalIgnoreCase);
-        public bool IsUpdate => Context.MessageName.Equals("Update", StringComparison.OrdinalIgnoreCase);
-        public bool IsDelete => Context.MessageName.Equals("Delete", StringComparison.OrdinalIgnoreCase);
+        public bool HasSharedVariable(string key,
+            StringComparison comparison = StringComparison.OrdinalIgnoreCase)
+            => Context.HasSharedVariable(key, comparison);
+
+
         public bool IsMessage(string name) => Context.MessageName.Equals(name, StringComparison.OrdinalIgnoreCase);
 
-        public object Target
+        private static Entity LoadImage(string name, ref Entity field, ref bool loaded,
+            EntityImageCollection collection)
         {
-            get
-            {
-                if (!isTargetLoaded)
-                {
-                    Context.InputParameters.TryGetValue("Target", out target);
-                    isTargetLoaded = true;
-                }
-                return target;
-            }
-        }
+            if (loaded) return field;
+            if (collection.Contains(name))
+                field = collection[name];
+            loaded = true;
 
-        public Entity TargetEntity
-        {
-            get
-            {
-                if (!isEntityLoaded)
-                {
-                    targetEntity = Target as Entity;
-                    isEntityLoaded = true;
-                }
-                return targetEntity;
-            }
-        }
-
-        public Entity PreImage => LoadImage("PreImage", ref preImage, ref isPreLoaded, Context.PreEntityImages);
-        public Entity PostImage => LoadImage("PostImage", ref postImage, ref isPostLoaded, Context.PostEntityImages);
-
-        public Entity FullTarget
-        {
-            get
-            {
-                var merged = new Entity(TargetEntity?.LogicalName ?? PreImage?.LogicalName ?? PostImage?.LogicalName);
-                if (PreImage != null) merged.Merge(PreImage);
-                if (TargetEntity != null) merged.Merge(TargetEntity);
-                if (PostImage != null) merged.Merge(PostImage);
-                return merged;
-            }
-        }
-
-        private Entity LoadImage(string name, ref Entity field, ref bool loaded, EntityImageCollection collection)
-        {
-            if (!loaded)
-            {
-                if (collection.Contains(name))
-                    field = collection[name];
-                loaded = true;
-            }
             return field;
         }
 
@@ -141,7 +166,8 @@ namespace CrmBasePluginFramework
         private bool ResolveTracingFlag()
         {
             if (TryGetSharedVariable("ForceTrace", out bool sharedFlag) && sharedFlag) return true;
-            if (Context.InputParameters.TryGetValue("Debug", out var debugObj) && debugObj is bool debugFlag && debugFlag) return true;
+            if (Context.InputParameters.TryGetValue("Debug", out var debugObj) && debugObj is bool debugFlag &&
+                debugFlag) return true;
             if (IsDebugTraceEnabledFromEnvironment()) return true;
 
             try
@@ -149,7 +175,10 @@ namespace CrmBasePluginFramework
                 var config = JsonConvert.DeserializeObject<PluginConfig>(UnsecureConfig);
                 return config?.DebugTrace == true;
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
         }
 
         private bool IsDebugTraceEnabledFromEnvironment()
@@ -187,7 +216,8 @@ namespace CrmBasePluginFramework
             }
             catch (Exception ex)
             {
-                TracingService?.Trace($"[TraceFlag] Error retrieving env variable '{TraceFlagSchemaName}': {ex.Message}");
+                TracingService?.Trace(
+                    $"[TraceFlag] Error retrieving env variable '{TraceFlagSchemaName}': {ex.Message}");
                 return false;
             }
         }
@@ -200,13 +230,33 @@ namespace CrmBasePluginFramework
 
     public class ExecutionObject<T> : ExecutionObject where T : Entity
     {
-        public ExecutionObject(IServiceProvider provider) : base(provider) { }
-        public ExecutionObject(ExecutionObject baseObj) : base(baseObj.ServiceProvider) { }
+        public ExecutionObject(IServiceProvider provider) : base(provider)
+        {
+        }
 
-        public new T TargetEntity => base.TargetEntity?.ToEntity<T>();
-        public T FullTargetEntity => base.FullTarget?.ToEntity<T>();
-        public new T PreImage => base.PreImage?.ToEntity<T>();
-        public new T PostImage => base.PostImage?.ToEntity<T>();
+        public ExecutionObject(ExecutionObject baseObj) : base(baseObj.ServiceProvider)
+        {
+        }
+
+        public new T TargetEntity
+        {
+            get => base.TargetEntity?.ToEntity<T>();
+        }
+
+        public T FullTargetEntity
+        {
+            get => FullTarget?.ToEntity<T>();
+        }
+
+        public new T PreImage
+        {
+            get => base.PreImage?.ToEntity<T>();
+        }
+
+        public new T PostImage
+        {
+            get => base.PostImage?.ToEntity<T>();
+        }
 
         public void Require(bool condition, string message)
         {
@@ -265,6 +315,7 @@ namespace CrmBasePluginFramework
         IOrganizationService OrgServiceAdmin { get; }
         ITracingService TracingService { get; }
     }
+
     public enum PluginStage
     {
         PreValidation = 10,
