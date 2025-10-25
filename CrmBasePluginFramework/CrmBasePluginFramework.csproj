@@ -21,6 +21,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -29,6 +30,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -93,6 +95,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BasePlugin.cs" />
+    <Compile Include="Diagnostics\TrackingServiceConfig.cs" />
+    <Compile Include="Extensions\ExecutionObjectSettingsExtensions.cs" />
+    <Compile Include="Extensions\TracingServiceExtensions.cs" />
+    <Compile Include="Diagnostics\PluginTracingService.cs" />
     <Compile Include="ExecutionObject.cs" />
     <Compile Include="Extensions\PluginContextExtensions.cs" />
     <Compile Include="Extensions\EntityExtensions.cs" />
