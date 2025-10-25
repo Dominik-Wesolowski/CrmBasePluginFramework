@@ -1,115 +1,273 @@
-# Crm.BasePluginFramework
+# CrmBasePluginFramework
 
-**Stop repeating yourself in every Dynamics 365 plugin.**
-
-`Crm.PluginFramework` is a lightweight but powerful base framework for building Microsoft Dataverse / Dynamics 365 plugins and service components.  
-It gives you a **solid execution model**, **clean extensibility**, and **battle-tested utility functions** - all designed for real-world CRM projects.
+A lightweight, opinionated framework for building **Dynamics 365 / Dataverse plugins**.
+Focused on **clarity, maintainability, and full control** over tracing, configuration, and plugin execution context - without unnecessary abstractions or "magic".
 
 ---
 
-## Why use it?
+## ✳️ Overview
 
-Every experienced CRM developer has built their own BasePlugin and helper extensions.  
-This repo gives you a production-ready, polished version of that foundation:
-  - 🧠 Typed plugin execution model with full access to services & images
-  - 🧰 Entity & service extension methods that prevent bugs and reduce code noise
-  - 💬 Trace-friendly, testable, readable plugin code
-  - 🔁 Smart diff updates and safe CRUD shortcuts
-  - 🧼 No dependency injection, no runtime magic - works with the out-of-the-box plugin pipeline
+### 🔹 ExecutionObject
 
-If you've ever written this:
+Central runtime context for plugin execution.
+Provides immediate access to:
 
-```csharp
-var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-var target = (Entity)context.InputParameters["Target"];
-var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-var service = serviceFactory.CreateOrganizationService(context.UserId);
-```
-...then this framework is for you.
+* `IPluginExecutionContext` (`Context`)
+* `IOrganizationService`, `IOrganizationServiceAdmin`, and `IOrganizationServiceFactory`
+* `ITracingService` (already wrapped with structured logging)
+* Entity images (`PreImage`, `PostImage`, `Target`, and merged `FullTarget`)
+* Helpers for:
 
-## What's included?
+  * `IsChanged` / `HasChangedAny`
+  * `IsCreate`, `IsUpdate`, `IsDelete`
+  * `TryGetSharedVariable<T>()`, `HasSharedVariable()`, etc.
 
-  - BasePlugin - Abstract class with built-in tracing, config parsing, and error handling
-  - ExecutionObject - One-liner access to Context, Target, Images, Services, SharedVariables, etc.
-  - ExecutionObject&lt;T&gt; - Strongly-typed version with FullTargetEntity, PreImage, PostImage
+**Responsibilities:**
 
+* Determines whether tracing is enabled (via `ForceTrace`, `Debug` flag, environment variable, or step config JSON).
+* Automatically replaces the default CRM tracer with `PluginTracingService`.
+* Resolves configuration (SharedVariables → Step configs → Environment Variables).
 
-## Entity & service extensions
+---
 
-  - Entity merging - Merge(), MergeIfNotExist(), ToDebugString()
-  - OptionSets - ToEnum<T>(), HasOptionSetValue(...)
-  - Aliased values - GetAliasedValue<T>(), GetAliasedEntity()
-  - Money / References - GetMoneyValue(...), HasValue()
-  - Service utilities - TryRetrieve(...), Exists(...), QueryFirst<T>(), UpdateIfChanged()
-  - CRUD wrappers - Upsert(), CreateAndReturnId(), UpdateWithReturn()
-  - Typed Execute - Execute<TResponse>(OrganizationRequest)
+### 🔹 PluginTracingService
 
-```csharp
-public class ContactPlugin : BasePlugin<Contact>
+A structured logger wrapping `ITracingService`.
+Provides:
+
+* Level-based logging (`Trace`, `Info`, `Warning`, `Error`)
+* ISO 8601 UTC timestamps
+* Pipeline context metadata (`Message`, `Stage`, `Depth`, `Entity`, `CorrelationId`)
+* `LogException()` for consistent error logging
+
+Configured automatically from `TrackingServiceConfig` JSON (resolved by `ExecutionObject`).
+
+---
+
+### 🔹 TrackingServiceConfig
+
+JSON-based configuration object that controls logging behavior:
+
+* `Enabled`: enable/disable all logging
+* `MinimumLevel`: minimum level to log (`Trace`, `Information`, `Warning`, `Error`)
+* `Levels`: optional overrides for specific levels (case-insensitive)
+
+Example:
+
+```json
 {
-    public ContactPlugin(string unsecure, string secure) : base(unsecure, secure) {}
+  "Enabled": true,
+  "MinimumLevel": "Information",
+  "Levels": {
+    "Trace": false,
+    "Information": true,
+    "Warning": true,
+    "Error": true
+  }
+}
+```
 
-    public override void Execute(ExecutionObject<Contact> context)
+---
+
+### 🔹 BasePlugin / BasePlugin<T>
+
+The minimal base classes for plugins:
+
+* Instantiates `ExecutionObject` (passing `unsecure/secure` config).
+* Handles execution lifecycle (`START` / `EXCEPTION` / `END`) via `ExecutionObject.Trace*()` methods.
+* Contains no logging or environment fetch logic - everything is handled by `ExecutionObject`.
+
+---
+
+## ⚙️ How configuration is resolved
+
+### 1️⃣ Debug tracing flag
+
+`ExecutionObject.ResolveTracingFlag()` checks these sources, in order:
+
+1. `SharedVariables["ForceTrace"] == true`
+2. `InputParameters["Debug"] == true`
+3. Environment variable **`debug_plugin_trace`** (`"true"/"false"`)
+4. Step **Unsecure** JSON → `{ "DebugTrace": true }`
+
+If any of these is `true`, tracing is enabled.
+
+---
+
+### 2️⃣ Logger configuration (`TrackingServiceConfig`)
+
+`ExecutionObject` automatically loads logger settings from
+**`new_PluginLoggingConfig`**, using this cascade:
+
+1. `SharedVariables`
+2. Step configs (Unsecure/Secure)
+3. Dataverse Environment Variable
+
+---
+
+## 🧩 JSON configuration examples
+
+### 📘 Full logger config (Environment Variable or Step)
+
+**Schema name:** `new_PluginLoggingConfig`
+**Value:**
+
+```json
+{
+  "Enabled": true,
+  "MinimumLevel": "Information",
+  "Levels": {
+    "Trace": false,
+    "Information": true,
+    "Warning": true,
+    "Error": true
+  }
+}
+```
+
+#### Field reference:
+
+| Property       | Type                      | Description                                                        |
+| -------------- | ------------------------- | ------------------------------------------------------------------ |
+| `Enabled`      | `bool`                    | Global switch (disable all logging if `false`).                    |
+| `MinimumLevel` | `string`                  | Minimal level to log (`Trace`, `Information`, `Warning`, `Error`). |
+| `Levels`       | `Dictionary<string,bool>` | Optional overrides (case-insensitive keys).                        |
+
+**Examples:**
+
+* Log only warnings and errors:
+
+  ```json
+  { "Enabled": true, "MinimumLevel": "Warning" }
+  ```
+* Enable all logs, including Trace:
+
+  ```json
+  {
+    "Enabled": true,
+    "MinimumLevel": "Information",
+    "Levels": { "Trace": true }
+  }
+  ```
+* Disable logging entirely:
+
+  ```json
+  { "Enabled": false }
+  ```
+
+---
+
+### 🧠 Debug trace flag (EV or SharedVariables)
+
+Separate flag to **force tracing** regardless of config:
+**Schema name:** `debug_plugin_trace`
+**Value:** `"true"` or `"false"`
+
+> Alternatively:
+> `SharedVariables["ForceTrace"] = true` or `InputParameters["Debug"] = true`
+
+---
+
+## 🧱 Example plugin
+
+```csharp
+public sealed class AccountPostUpdate : BasePlugin<Account>
+{
+    public AccountPostUpdate(string unsecure, string secure) : base(unsecure, secure) { }
+
+    protected override void Execute(ExecutionObject<Account> exec)
     {
-        var contact = context.FullTargetEntity;
-        context.Trace("Contact: {0}", contact.FullName);
+        exec.LogContextSummary();
 
-        if (!context.OrgService.Exists("contact", contact.Id))
-            throw new InvalidPluginExecutionException("Missing contact.");
-
-        var existing = context.OrgService.Retrieve<Contact>(contact.ToEntityReference(), new ColumnSet("firstname"));
-        var updated = existing.Merge(contact);
-
-        context.OrgService.UpdateIfChanged(existing, updated);
+        if (exec.IsChanged(Account.Fields.telephone1))
+        {
+            exec.TracingService.LogInfo("Phone changed for account={0}", exec.FullTargetEntity.Name);
+            // business logic here...
+        }
     }
 }
 ```
-No more context.InputParameters["Target"], no more if (context.InputParameters.Contains("Target")).
-## 🚀 Designed for
-  - Dynamics 365 CE / On-Prem
-  - Dataverse (Power Platform)
-  - Plugin Registration Tool / Azure Plugins
-  - .NET Framework 4.6.2+ or .NET 7/8
 
-## Why this repo exists
+✅ What happens automatically:
 
-This framework was born from years of CRM development pain - repeated plugin scaffolding, inconsistent context handling, and too much serviceProvider.GetService(...).
-It’s designed for clean, scalable, and reliable plugin development.
-Use it in your next project and never write boilerplate again.
+* `ExecutionObject` builds context and detects tracing mode.
+* Loads `TrackingServiceConfig` (Shared → Step → EV).
+* Wraps `ITracingService` with `PluginTracingService`.
+* You just call `exec.TracingService.LogInfo()` or use helpers like `IsChanged()`.
 
-## Installation / Suggested Project Structure
+---
 
-You can include this framework in your plugin solution using a shared code project, e.g.:
-```
-/Your.Solution/
-│
-├── Plugin.Contact/
-│ └── (uses BasePlugin, ExecutionObject, etc.)
-│
-├── Plugin.Account/
-│ └── (uses shared services, entity helpers, etc.)
-│
-├── Shared.PluginFramework/
-│ └── Core/
-│ ├── BasePlugin.cs
-│ ├── ExecutionObject.cs
-│ ├── Extensions/
-│ │ ├── EntityExtensions.cs
-│ │ └── ServiceExtensions.cs
-```
+## 🧭 Migration guide
 
-This allows reuse across all your plugins and background jobs.  
-You can name the shared project:
+If you used the previous version of this framework:
 
-- `Shared.PluginFramework`  
-- `Crm.Core`
-- `Dataverse.Base`
-- `Xrm.Shared`
+| Old responsibility                 | Now handled by                              |
+| ---------------------------------- | ------------------------------------------- |
+| FetchXml for `debug_plugin_trace`  | `ExecutionObject.GetSetting()`              |
+| Custom tracer setup                | automatic via `ExecutionObject` constructor |
+| BasePlugin logging setup           | removed - handled by ExecutionObject        |
+| Manual `ITracingService` injection | automatic                                   |
+| Step config parsing                | `ExecutionObject.WithStepConfig()`          |
 
-...whatever fits your naming convention.
+### Steps to migrate
 
-Make sure to reference this shared project from each plugin-specific project.
+1. **Remove** any FetchXml/QueryExpression code fetching EVs.
+   → `ExecutionObject` does this internally.
 
-## 📄 License
+2. **Stop** wrapping tracers manually in `BasePlugin`.
+   → `ExecutionObject` now injects `PluginTracingService`.
 
-MIT - free to use and modify.
+3. Move your existing logger JSON to one of:
+
+   * EV `new_PluginLoggingConfig`, or
+   * Step Unsecure/Secure field, or
+   * `SharedVariables["new_PluginLoggingConfig"]`.
+
+4. Replace any `trace.Trace(...)` calls with:
+
+   ```csharp
+   exec.TracingService.LogInfo("message");
+   exec.TracingService.LogError("message");
+   exec.TracingService.LogWarning("message");
+   ```
+
+---
+
+## 🔍 Summary
+
+| Area                              | Before                              | Now                                  |
+| --------------------------------- | ----------------------------------- | ------------------------------------ |
+| Tracing setup                     | Manual in BasePlugin or BaseService | Automatic in `ExecutionObject`       |
+| Debug flag (`debug_plugin_trace`) | Manual FetchXml                     | Resolved via `GetSetting()`          |
+| Logging                           | Unstructured `Trace()`              | Structured `PluginTracingService`    |
+| Config source                     | Unsecure only                       | Shared → Step → Environment Variable |
+| BasePlugin role                   | Heavy orchestration                 | Lightweight delegate                 |
+
+---
+
+## 🧩 Philosophy
+
+> **BasePlugin should not do magic.**
+>
+> All environment, tracing, and config resolution logic lives in `ExecutionObject`.
+> Your plugins stay small, testable, and predictable.
+
+---
+
+## 🧠 TL;DR
+
+✅ Structured, level-based logging
+
+✅ Auto-configured tracing
+
+✅ Simple JSON configuration
+
+✅ Config source cascade (Shared → Step → EV)
+
+✅ No BaseService dependency
+
+✅ Early-bound friendly helpers
+
+---
+
+> 💬 *“A clean foundation for building maintainable Dynamics 365 plugins.”*
