@@ -97,7 +97,7 @@ If any of these is `true`, tracing is enabled.
 ### 2️⃣ Logger configuration (`TrackingServiceConfig`)
 
 `ExecutionObject` automatically loads logger settings from
-**`sha_PluginLoggingConfig`**, using this cascade:
+**`new_PluginLoggingConfig`**, using this cascade:
 
 1. `SharedVariables`
 2. Step configs (Unsecure/Secure)
@@ -109,7 +109,7 @@ If any of these is `true`, tracing is enabled.
 
 ### 📘 Full logger config (Environment Variable or Step)
 
-**Schema name:** `sha_PluginLoggingConfig`
+**Schema name:** `new_PluginLoggingConfig`
 **Value:**
 
 ```json
@@ -219,9 +219,9 @@ If you used the previous version of this framework:
 
 3. Move your existing logger JSON to one of:
 
-   * EV `sha_PluginLoggingConfig`, or
+   * EV `new_PluginLoggingConfig`, or
    * Step Unsecure/Secure field, or
-   * `SharedVariables["sha_PluginLoggingConfig"]`.
+   * `SharedVariables["new_PluginLoggingConfig"]`.
 
 4. Replace any `trace.Trace(...)` calls with:
 
