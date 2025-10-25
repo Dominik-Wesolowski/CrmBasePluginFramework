@@ -1,15 +1,17 @@
 ﻿using CrmBasePluginFramework.Diagnostics;
 using CrmBasePluginFramework.Extensions;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.PluginTelemetry;
 using Newtonsoft.Json;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace CrmBasePluginFramework;
 
 public class ExecutionObject : IExecutionServiceBag
 {
-    private const string TraceFlagSchemaName = "debug_plugin_trace";
+    private const string DebugFlagSchemaName = "debug_plugin_trace"; // EV: bool
+    private const string LoggingConfigKey = "new_PluginLoggingConfig"; // EV: JSON (TrackingServiceConfig)
 
     private bool _isPreLoaded, _isPostLoaded, _isTargetLoaded, _isEntityLoaded;
     private Entity _preImage, _postImage, _targetEntity;
@@ -23,28 +25,18 @@ public class ExecutionObject : IExecutionServiceBag
         OrgService = OrgServiceFactory.CreateOrganizationService(Context.InitiatingUserId);
         OrgServiceAdmin = OrgServiceFactory.CreateOrganizationService(null);
 
-        var rawTrace = (ITracingService)provider.GetService(typeof(ITracingService));
-
         UnsecureConfig = null;
         SecureConfig = null;
 
-        IsTracingEnabled = ResolveTracingFlag();
-
-        var loggerCfgJson = this.GetSetting(TraceFlagSchemaName);
-        var loggerCfg = TrackingServiceConfig.FromJsonOrDefault(loggerCfgJson, TrackingServiceConfig.DefaultOn);
-        TracingService = new PluginTracingService(rawTrace, loggerCfg, Context);
+        InitTracing(ServiceProvider);
     }
 
-    public ExecutionObject(IServiceProvider provider, string unsecureConfig, string secureConfig)
-        : this(provider)
+    public ExecutionObject(IServiceProvider provider, string unsecureConfig, string secureConfig) : this(provider)
     {
+        // nadpisanie konfiguracji kroku i ponowna inicjalizacja trasingu
         UnsecureConfig = unsecureConfig;
         SecureConfig = secureConfig;
-
-        var loggerCfgJson = this.GetSetting(TraceFlagSchemaName);
-        var loggerCfg = TrackingServiceConfig.FromJsonOrDefault(loggerCfgJson, TrackingServiceConfig.DefaultOn);
-        TracingService = new PluginTracingService((PluginTracingService)TracingService ?? TracingService,
-            loggerCfg, Context);
+        InitTracing(ServiceProvider);
     }
 
     public ExecutionObject(ExecutionObject source)
@@ -61,8 +53,6 @@ public class ExecutionObject : IExecutionServiceBag
         UnsecureConfig = source.UnsecureConfig;
         SecureConfig = source.SecureConfig;
 
-        IsTracingEnabled = source.IsTracingEnabled;
-
         _isPreLoaded = source._isPreLoaded;
         _isPostLoaded = source._isPostLoaded;
         _isTargetLoaded = source._isTargetLoaded;
@@ -76,10 +66,9 @@ public class ExecutionObject : IExecutionServiceBag
 
     public IServiceProvider ServiceProvider { get; }
     public IPluginExecutionContext Context { get; }
+
     public string UnsecureConfig { get; private set; }
     public string SecureConfig { get; private set; }
-
-    public bool IsTracingEnabled { get; }
 
     public bool IsCreate
     {
@@ -101,9 +90,8 @@ public class ExecutionObject : IExecutionServiceBag
         get
         {
             if (_isTargetLoaded) return _target;
-            Context.InputParameters.TryGetValue("Target", out _target);
+            Context.InputParameters.TryGetValue(nameof(Target), out _target);
             _isTargetLoaded = true;
-
             return _target;
         }
     }
@@ -142,15 +130,16 @@ public class ExecutionObject : IExecutionServiceBag
         }
     }
 
-    public ITracingService TracingService { get; set; }
     public IOrganizationServiceFactory OrgServiceFactory { get; }
     public IOrganizationService OrgService { get; }
     public IOrganizationService OrgServiceAdmin { get; }
+    public ITracingService TracingService { get; private set; }
 
     public ExecutionObject WithStepConfig(string unsecureConfig, string secureConfig)
     {
         UnsecureConfig = unsecureConfig;
         SecureConfig = secureConfig;
+        InitTracing(ServiceProvider);
         return this;
     }
 
@@ -167,23 +156,17 @@ public class ExecutionObject : IExecutionServiceBag
         }
     }
 
-    public void Trace(string message)
-    {
-        if (IsTracingEnabled) TracingService?.Trace(message);
-    }
-
     public void TraceStart(string pluginType)
     {
-        if (!IsTracingEnabled) return;
-        Trace($"[START] {pluginType}");
-        Trace($"Message: {Context.MessageName} | Stage: {Context.Stage} | Depth: {Context.Depth}");
-        Trace($"PrimaryEntity: {Context.PrimaryEntityName} | CorrelationId: {Context.CorrelationId}");
+        TracingService.LogInfo($"[START] {pluginType}");
+        TracingService.LogInfo($"Message: {Context.MessageName} | Stage: {Context.Stage} | Depth: {Context.Depth}");
+        TracingService.LogInfo($"PrimaryEntity: {Context.PrimaryEntityName} | CorrelationId: {Context.CorrelationId}");
     }
 
     public void TraceException(Exception ex)
     {
-        if (!IsTracingEnabled || ex == null) return;
-        Trace($"[EXCEPTION] {ex.Message}\n{ex.StackTrace}");
+        if (ex == null) return;
+        TracingService.LogError($"[EXCEPTION] {ex.Message}\n{ex.StackTrace}");
     }
 
     public void SetSharedVariable<T>(string key, T value) => Context.SharedVariables[key] = value;
@@ -195,6 +178,28 @@ public class ExecutionObject : IExecutionServiceBag
     public bool IsMessage(string name) => Context.MessageName.Equals(name, StringComparison.OrdinalIgnoreCase);
     public ExecutionObject<T> ToEntity<T>() where T : Entity => new ExecutionObject<T>(this);
 
+    private void InitTracing(IServiceProvider provider)
+    {
+        var rawTrace = (ITracingService)provider.GetService(typeof(ITracingService)); // zawsze surowy tracer
+        var cfg = BuildLoggerConfig();
+        TracingService = new PluginTracingService(rawTrace, cfg, Context);
+    }
+
+    private TrackingServiceConfig BuildLoggerConfig()
+    {
+        var json = this.GetSetting(LoggingConfigKey);
+        var cfg = TrackingServiceConfig.FromJsonOrDefault(json, TrackingServiceConfig.DefaultOn);
+
+        var debug = this.GetSetting(DebugFlagSchemaName);
+        if (string.IsNullOrWhiteSpace(debug) || !bool.TryParse(debug, out var isDebug) || !isDebug) return cfg;
+        cfg.Enabled = true;
+        cfg.MinimumLevel = LogLevel.Trace;
+        cfg.Levels ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        cfg.Levels[nameof(LogLevel.Trace)] = true;
+
+        return cfg;
+    }
+
     private static Entity LoadImage(string name, ref Entity field, ref bool loaded, EntityImageCollection collection)
     {
         if (loaded) return field;
@@ -202,42 +207,6 @@ public class ExecutionObject : IExecutionServiceBag
             field = collection[name];
         loaded = true;
         return field;
-    }
-
-    private bool ResolveTracingFlag()
-    {
-        if (Context.TryGetSharedVariable("ForceTrace", out bool force) && force) return true;
-
-        if (Context.InputParameters.TryGetValue("Debug", out var debugObj) &&
-            debugObj is bool debugFlag && debugFlag) return true;
-
-        if (IsDebugTraceEnabledFromEnvironment()) return true;
-
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(UnsecureConfig))
-            {
-                var cfg = JsonConvert.DeserializeObject<PluginConfig>(UnsecureConfig);
-                if (cfg?.DebugTrace == true) return true;
-            }
-        }
-        catch
-        {
-        }
-
-        return false;
-    }
-
-    private bool IsDebugTraceEnabledFromEnvironment()
-    {
-        var value = this.GetSetting(TraceFlagSchemaName);
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        return bool.TryParse(value, out var parsed) && parsed;
-    }
-
-    private class PluginConfig
-    {
-        public bool DebugTrace { get; set; }
     }
 }
 
@@ -276,39 +245,6 @@ public class ExecutionObject<T> : ExecutionObject where T : Entity
         if (!condition) throw new InvalidPluginExecutionException(message);
     }
 
-    public bool IsChanged(string attributeName)
-    {
-        var tgt = base.TargetEntity;
-        var pre = base.PreImage;
-
-        if (tgt == null) return false;
-        if (!tgt.Attributes.Contains(attributeName)) return false;
-
-        var newVal = tgt[attributeName];
-        if (pre == null || !pre.Attributes.Contains(attributeName)) return true;
-
-        var oldVal = pre[attributeName];
-        return !Equals(newVal, oldVal);
-    }
-
-    public bool HasChangedAny(params string[] attributeNames)
-        => attributeNames != null && attributeNames.Any(IsChanged);
-
-    public void LogContextSummary()
-    {
-        if (!IsTracingEnabled) return;
-
-        Trace("[Context Summary]");
-        Trace($"Message        : {Context.MessageName}");
-        Trace($"Stage          : {Context.Stage} ({(PluginStage)Context.Stage})");
-        Trace($"Depth          : {Context.Depth}");
-        Trace($"Mode           : {(Context.Mode == 0 ? "Synchronous" : "Asynchronous")}");
-        Trace($"Entity         : {Context.PrimaryEntityName} ({Context.PrimaryEntityId})");
-        Trace($"User           : {Context.UserId} / Initiating: {Context.InitiatingUserId}");
-        Trace($"CorrelationId  : {Context.CorrelationId}");
-        Trace($"IsOffline      : {Context.IsExecutingOffline}");
-    }
-
     public bool TryGetInputParameter<TParam>(string key, out TParam value)
     {
         if (Context.InputParameters.TryGetValue(key, out var raw) && raw is TParam typed)
@@ -328,12 +264,4 @@ public interface IExecutionServiceBag
     IOrganizationService OrgService { get; }
     IOrganizationService OrgServiceAdmin { get; }
     ITracingService TracingService { get; }
-}
-
-public enum PluginStage
-{
-    PreValidation = 10,
-    PreOperation = 20,
-    MainOperation = 30,
-    PostOperation = 40
 }

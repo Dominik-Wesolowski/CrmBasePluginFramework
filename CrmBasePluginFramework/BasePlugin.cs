@@ -1,4 +1,5 @@
-﻿using Microsoft.Xrm.Sdk;
+﻿using CrmBasePluginFramework.Extensions;
+using Microsoft.Xrm.Sdk;
 using System;
 
 namespace CrmBasePluginFramework;
@@ -24,7 +25,7 @@ public abstract class BasePlugin(string unsecureConfig, string secureConfig) : I
         }
         finally
         {
-            exec.Trace($"[END] {GetType().FullName}");
+            exec.TracingService.LogInfo($"[END] {GetType().FullName}");
         }
     }
 
