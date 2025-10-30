@@ -192,11 +192,15 @@ Plugin started for account: 4fa1c0...
 ## 🧠 TL;DR
 
 ✅ No flags, no FetchXml, no boilerplate
+
 ✅ Configurable per-environment via EV
+
 ✅ Structured tracing with contextual metadata
+
 ✅ Fully automatic setup in `ExecutionObject`
+
 
 ---
 
-> “Write plugins that focus on business logic — not plumbing.”
-> — *CrmBasePluginFramework*
+> “Write plugins that focus on business logic - not plumbing.”
+> *CrmBasePluginFramework*
